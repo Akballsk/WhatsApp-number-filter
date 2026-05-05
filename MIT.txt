@@ -1,0 +1,18 @@
+
+---
+
+## 6️⃣ `render.yaml`
+
+```yaml
+services:
+  - type: web
+    name: whatsapp-telegram-bot
+    env: node
+    buildCommand: npm install
+    startCommand: node ws.js
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+    plan: free
+    healthCheckPath: /
+    autoDeploy: true

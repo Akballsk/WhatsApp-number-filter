@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: whatsapp-telegram-bot
+    runtime: node
+    repo: https://github.com/YOUR_USERNAME/whatsapp-telegram-bot
+    plan: free
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        value: 8202590545:AAF_3F1LzWMc9HRPLwGDvzmHn173gP4ysdE
+      - key: NODE_VERSION
+        value: 18.17.0
+    buildCommand: npm install
+    startCommand: node ws.js
+    healthCheckPath: /
+    autoDeploy: true
+    domains:
+      - whatsapp-bot.onrender.com
