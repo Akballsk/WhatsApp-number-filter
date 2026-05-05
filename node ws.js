@@ -7,7 +7,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
-    res.send('🤖 Bot is running');
+    res.send('Bot is running');
 });
 
 app.listen(port, () => {
@@ -21,44 +21,38 @@ let sock = null;
 let isConnected = false;
 
 async function startBot() {
-    try {
-        const { state, saveCreds } = await useMultiFileAuthState('auth_info');
-        const { version } = await fetchLatestBaileysVersion();
+    const { state, saveCreds } = await useMultiFileAuthState('auth_info');
+    const { version } = await fetchLatestBaileysVersion();
 
-        sock = makeWASocket({
-            version,
-            auth: state,
-            logger: undefined,
-            browser: ["Chrome", "Windows", "10"],
-            printQRInTerminal: true,
-        });
+    sock = makeWASocket({
+        version,
+        auth: state,
+        logger: undefined,
+        browser: ["Chrome", "Windows", "10"],
+        printQRInTerminal: true,
+    });
 
-        sock.ev.on("creds.update", saveCreds);
+    sock.ev.on("creds.update", saveCreds);
 
-        sock.ev.on("connection.update", (update) => {
-            const { connection, qr } = update;
-            
-            if (qr) {
-                console.log("SCAN THIS QR CODE:");
-                QRCode.generate(qr, { small: true });
-            }
-            
-            if (connection === "open") {
-                isConnected = true;
-                console.log("WHATSAPP CONNECTED!");
-                bot.sendMessage(6074977440, "Bot is online!").catch(e => console.log(e));
-            }
-            
-            if (connection === "close") {
-                isConnected = false;
-                console.log("DISCONNECTED, RECONNECTING...");
-                setTimeout(startBot, 5000);
-            }
-        });
-    } catch (err) {
-        console.log("Start error:", err);
-        setTimeout(startBot, 10000);
-    }
+    sock.ev.on("connection.update", (update) => {
+        const { connection, qr } = update;
+
+        if (qr) {
+            console.log("SCAN THIS QR:");
+            QRCode.generate(qr, { small: true });
+        }
+
+        if (connection === "open") {
+            isConnected = true;
+            console.log("CONNECTED!");
+            bot.sendMessage(6074977440, "Bot online").catch(() => {});
+        }
+
+        if (connection === "close") {
+            isConnected = false;
+            setTimeout(startBot, 5000);
+        }
+    });
 }
 
 startBot();
@@ -71,31 +65,27 @@ bot.on("message", async (msg) => {
         return bot.sendMessage(chatId, "Send numbers like: 1639-399-4079");
     }
 
-    const numbers = text.split(/\s+/);
-    const final = [];
+    const raw = text.split(/\s+/);
+    const numbers = [];
 
-    for (let n of numbers) {
-        let c = n.replace(/\D/g, "");
-        if (c.length === 10) final.push("1" + c);
-        else if (c.length === 11 && c.startsWith("1")) final.push(c);
+    for (let item of raw) {
+        let clean = item.replace(/\D/g, "");
+        if (clean.length === 10) numbers.push("1" + clean);
+        else if (clean.length === 11 && clean.startsWith("1")) numbers.push(clean);
     }
 
-    if (!final.length) return bot.sendMessage(chatId, "No valid numbers");
-
+    if (!numbers.length) return bot.sendMessage(chatId, "No valid numbers");
     if (!isConnected) return bot.sendMessage(chatId, "WhatsApp connecting...");
 
-    for (let num of final) {
+    for (let num of numbers) {
         try {
             const [res] = await sock.onWhatsApp(num + "@s.whatsapp.net");
-            if (res && res.exists) {
-                await bot.sendMessage(chatId, num + " ❌ Banned");
-            } else {
-                await bot.sendMessage(chatId, num + " ✅ Fresh");
-            }
-        } catch (e) {
+            const status = res?.exists ? "❌ Banned" : "✅ Fresh";
+            await bot.sendMessage(chatId, num + " " + status);
+        } catch {
             await bot.sendMessage(chatId, num + " ⚠️ Error");
         }
     }
 });
 
-console.log("Bot Started!");
+console.log("Bot Started - NO PINO!");
