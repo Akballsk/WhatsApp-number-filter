@@ -1,1 +1,1 @@
-web: node ws.js
+web: npm install --production=false && node ws.js
