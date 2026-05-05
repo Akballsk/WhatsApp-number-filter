@@ -1,26 +1,18 @@
 const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion } = require("@whiskeysockets/baileys");
-const QRCode = require("qrcode-terminal");
 const TelegramBot = require("node-telegram-bot-api");
-const pino = require("pino");
 const express = require("express");
 
-// Express server for Render
 const app = express();
 const port = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
-    res.send(`
-        <h1>🤖 WhatsApp Number Checker Bot</h1>
-        <p>Status: 🟢 Running</p>
-        <p>Bot is active and waiting for commands</p>
-    `);
+    res.send('Bot is running!');
 });
 
 app.listen(port, () => {
-    console.log(`✅ Web server running on port ${port}`);
+    console.log(`Server running on port ${port}`);
 });
 
-// Telegram Bot Token
 const tgToken = process.env.TELEGRAM_BOT_TOKEN || "8202590545:AAF_3F1LzWMc9HRPLwGDvzmHn173gP4ysdE";
 const bot = new TelegramBot(tgToken, { polling: true });
 
@@ -28,44 +20,46 @@ let sock = null;
 let isConnected = false;
 
 async function startBot() {
-    const { state, saveCreds } = await useMultiFileAuthState('auth_info');
-    const { version } = await fetchLatestBaileysVersion();
+    try {
+        const { state, saveCreds } = await useMultiFileAuthState('auth_info');
+        const { version } = await fetchLatestBaileysVersion();
 
-    sock = makeWASocket({
-        version,
-        auth: state,
-        logger: pino({ level: "silent" }),
-        browser: ["Ubuntu", "Chrome", "20.0.04"],
-        printQRInTerminal: true,
-    });
+        sock = makeWASocket({
+            version,
+            auth: state,
+            browser: ["Ubuntu", "Chrome", "20.0.04"],
+            printQRInTerminal: true,
+        });
 
-    sock.ev.on("creds.update", saveCreds);
+        sock.ev.on('creds.update', saveCreds);
 
-    sock.ev.on("connection.update", (update) => {
-        const { connection, qr, lastDisconnect } = update;
-        
-        if (qr) {
-            console.log("📱 Scan this QR code:");
-            QRCode.generate(qr, { small: true });
-        }
-        
-        if (connection === "open") {
-            isConnected = true;
-            console.log("✅ WhatsApp Connected!");
-            bot.sendMessage(6074977440, "✅ Bot is online on Render!");
-        }
-        
-        if (connection === "close") {
-            isConnected = false;
-            console.log("❌ Disconnected, reconnecting in 5 seconds...");
-            setTimeout(startBot, 5000);
-        }
-    });
+        sock.ev.on('connection.update', (update) => {
+            const { connection, qr } = update;
+            
+            if (qr) {
+                console.log("QR Code:", qr);
+                console.log("Scan with WhatsApp to connect!");
+            }
+            
+            if (connection === 'open') {
+                isConnected = true;
+                console.log('✅ WhatsApp Connected!');
+                bot.sendMessage(6074977440, "✅ Bot is online!");
+            }
+            
+            if (connection === 'close') {
+                isConnected = false;
+                console.log('❌ Disconnected, reconnecting...');
+                setTimeout(startBot, 5000);
+            }
+        });
+    } catch (error) {
+        console.log("Error starting bot:", error);
+    }
 }
 
-startBot().catch(err => console.log(err));
+startBot();
 
-// Telegram message handler
 bot.on("message", async (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text;
@@ -73,19 +67,12 @@ bot.on("message", async (msg) => {
     if (!text || text === "/start") {
         return bot.sendMessage(chatId, `🤖 WhatsApp Number Checker Bot
 
-📌 How to use:
-Send US/Canada numbers in any format:
-• 1639-399-4079
-• 16393994079
-• 1-639-399-4079
+Send US/Canada numbers:
+Example: 1639-399-4079
 
-📊 Bot Status: ${isConnected ? '✅ Active' : '⏳ Connecting...'}
-
-Example:
-1639-399-4079 1639-398-0764`);
+Status: ${isConnected ? '✅ Active' : '⏳ Connecting...'}`);
     }
 
-    // Extract numbers
     const rawNumbers = text.split(/\s+/);
     const finalNumbers = [];
 
@@ -96,14 +83,14 @@ Example:
     }
 
     if (finalNumbers.length === 0) {
-        return bot.sendMessage(chatId, "❌ No valid numbers found!\n\nSend numbers like: 1639-399-4079");
+        return bot.sendMessage(chatId, "❌ No valid numbers found!");
     }
 
     if (!isConnected) {
-        return bot.sendMessage(chatId, "⏳ WhatsApp connecting... Please wait 1-2 minutes and try again.");
+        return bot.sendMessage(chatId, "⏳ WhatsApp connecting... Please wait 1-2 minutes");
     }
 
-    const processingMsg = await bot.sendMessage(chatId, `<b>🔍 Found ${finalNumbers.length} numbers</b>\n<i>⏳ Processing...</i>`, { parse_mode: "HTML" });
+    const processingMsg = await bot.sendMessage(chatId, `🔍 Checking ${finalNumbers.length} numbers...`);
 
     let index = 1;
     let banned = 0;
@@ -114,31 +101,24 @@ Example:
             const jid = `${formattedNum}@s.whatsapp.net`;
             const [result] = await sock.onWhatsApp(jid);
 
-            let statusLine = "";
-            
             if (result && result.exists) {
-                statusLine = `${index}. <code>${formattedNum}</code> ❌ Banned`;
+                await bot.sendMessage(chatId, `${index}. ❌ ${formattedNum} - Banned`);
                 banned++;
             } else {
-                statusLine = `${index}. <code>${formattedNum}</code> ✅ Fresh Num`;
+                await bot.sendMessage(chatId, `${index}. ✅ ${formattedNum} - Fresh Num`);
                 fresh++;
             }
-
-            await bot.sendMessage(chatId, statusLine, { parse_mode: "HTML" });
-
         } catch (e) {
-            await bot.sendMessage(chatId, `${index}. <code>${formattedNum}</code> ⚠️ Error`, { parse_mode: "HTML" });
-            fresh++;
+            await bot.sendMessage(chatId, `${index}. ⚠️ ${formattedNum} - Error`);
         }
         index++;
         await new Promise(res => setTimeout(res, 500));
     }
     
-    bot.editMessageText(`<b>✅ Check Completed!</b>\n\n📊 Results:\n❌ Banned: ${banned}\n✅ Fresh: ${fresh}\n📱 Total: ${finalNumbers.length}`, {
+    await bot.editMessageText(`✅ Check Complete!\n❌ Banned: ${banned}\n✅ Fresh: ${fresh}\n📱 Total: ${finalNumbers.length}`, {
         chat_id: chatId,
-        message_id: processingMsg.message_id,
-        parse_mode: "HTML"
+        message_id: processingMsg.message_id
     });
 });
 
-console.log("🤖 Bot is running on Render!");
+console.log("Bot started successfully!");
